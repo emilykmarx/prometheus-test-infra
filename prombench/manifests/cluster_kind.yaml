@@ -7,25 +7,25 @@ nodes:
         kind: InitConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            node-labels: "node-name=main-node"
+            node-labels: "node-name=main-node,cloud.google.com/gke-nodepool=main-node"
   - role: worker
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            node-labels: "isolation=prometheus,node-name=prometheus-{{ .PR_NUMBER }}"
+            node-labels: "isolation=prometheus,node-name=prometheus-{{ .PR_NUMBER }},cloud.google.com/gke-nodepool=prometheus-{{ .PR_NUMBER }}"
   - role: worker
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            node-labels: "isolation=prometheus,node-name=prometheus-{{ .PR_NUMBER }}"
+            node-labels: "isolation=prometheus,node-name=prometheus-{{ .PR_NUMBER }},cloud.google.com/gke-nodepool=prometheus-{{ .PR_NUMBER }}"
   - role: worker
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            node-labels: "isolation=none,node-name=nodes-{{ .PR_NUMBER }}"
+            node-labels: "isolation=none,node-name=nodes-{{ .PR_NUMBER }},cloud.google.com/gke-nodepool=nodes-{{ .PR_NUMBER }}"
