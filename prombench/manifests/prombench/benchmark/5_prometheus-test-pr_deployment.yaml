@@ -763,8 +763,9 @@ spec:
         runAsUser: 0
       initContainers:
       - name: prometheus-builder
-        image: docker.io/prominfra/prometheus-builder:master
-        imagePullPolicy: Always
+      # local prometheus builder image
+        image: prometheus-builder:conftamer
+        imagePullPolicy: IfNotPresent
         env:
         - name: PR_NUMBER
           value: "{{ .PR_NUMBER }}"
@@ -817,7 +818,9 @@ spec:
           "--web.external-url=http://{{ .DOMAIN_NAME }}/{{ .PR_NUMBER }}/prometheus-pr",
           "--storage.tsdb.path=/prometheus",
           "--config.file=/etc/prometheus/prometheus.yml",
-          "--log.level=info"
+          "--log.level=info",
+          # needed for Prom 3.2.1
+          "--enable-feature=metadata-wal-records"
         ]
         resources:
           requests:

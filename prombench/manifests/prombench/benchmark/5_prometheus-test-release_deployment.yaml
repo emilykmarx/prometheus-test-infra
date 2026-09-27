@@ -786,14 +786,16 @@ spec:
           sleep 30
       containers:
       - name: prometheus
-        image: quay.io/prometheus/prometheus:{{ .RELEASE }}
-        imagePullPolicy: Always
+        image: prometheus-conftamer:{{ .RELEASE }}
+        imagePullPolicy: IfNotPresent
         command: [ "/bin/prometheus" ]
         args: [
           "--web.external-url=http://{{ .DOMAIN_NAME }}/{{ .PR_NUMBER }}/prometheus-release",
           "--storage.tsdb.path=/prometheus",
           "--config.file=/etc/prometheus/prometheus.yml",
-          "--log.level=info"
+          "--log.level=info",
+          # needed for Prom 3.2.1
+          "--enable-feature=metadata-wal-records"
         ]
         resources:
           requests:
