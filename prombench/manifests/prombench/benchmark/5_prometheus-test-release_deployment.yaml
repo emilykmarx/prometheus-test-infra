@@ -783,6 +783,7 @@ spec:
           until [ -f /tmp/peer-ready ]; do
             sleep 1
           done
+          sleep 30
       containers:
       - name: prometheus
         image: quay.io/prometheus/prometheus:{{ .RELEASE }}
