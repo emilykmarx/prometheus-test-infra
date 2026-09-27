@@ -14,12 +14,6 @@ export SERVICEACCOUNT_CLIENT_EMAIL=fakeemail
 
 # 0. Per-machine:
 sudo sysctl fs.inotify.max_user_instances=512
-# Build Prometheus builder image
-docker build --build-context conftamer=$HOME/projects/config_tracing/go-conftamer-ancestry -t prometheus-builder:conftamer ./tools/prometheus-builder
-# Build Prometheus image
-docker build -f ./tools/prometheus-builder/Dockerfile.image --build-arg VERSION=v3.2.1 -t prometheus-conftamer:v3.2.1 ./tools/prometheus-builder
-# Save Prometheus images
-docker save prometheus-builder:conftamer prometheus-conftamer:v3.2.1 -o /tmp/conftamer-images.tar
 
 # 1. Start cluster
 ../infra/infra kind cluster create -v PR_NUMBER:$PR_NUMBER -v CLUSTER_NAME:$CLUSTER_NAME \
@@ -30,7 +24,7 @@ echo 'WAIT FOR CLUSTER'
 # 1.5. Taint
 kubectl --context kind-$CLUSTER_NAME taint nodes $CLUSTER_NAME-control-plane node-role.kubernetes.io/control-plane-
 
-# 1.5.1. Load Prometheus images
+# 1.5.1. Load images
 for n in $(kind get nodes --name $CLUSTER_NAME); do docker exec -i $n ctr -n k8s.io images import --all-platforms - < /tmp/conftamer-images.tar; done
 
 # 2. Start infra
