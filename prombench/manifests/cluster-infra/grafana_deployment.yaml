@@ -39,6 +39,9 @@ spec:
           value: "{{ .GRAFANA_ADMIN_PASSWORD }}"
         - name: GF_USERS_VIEWERS_CAN_EDIT
           value: "true"
+        # Ancestry logging
+        - name: GODEBUG
+          value: "tracebackancestors=100"
         readinessProbe:
           httpGet:
             path: /login

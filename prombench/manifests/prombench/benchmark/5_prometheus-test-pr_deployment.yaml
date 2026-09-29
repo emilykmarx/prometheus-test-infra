@@ -822,6 +822,10 @@ spec:
           # needed for Prom 3.2.1
           "--enable-feature=metadata-wal-records"
         ]
+        env:
+        # Ancestry logging
+        - name: GODEBUG
+          value: "tracebackancestors=100"
         resources:
           requests:
             cpu: 2
