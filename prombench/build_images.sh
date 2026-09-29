@@ -42,5 +42,21 @@ docker build -t "alertmanager-conftamer:v0.25.1" \
         --build-arg OS="linux" \
         ./
 
-# 4. Save images
+# 4. Kubernetes API server - NOTE this requires a fork of k8s with the changes in https://github.com/emilykmarx/kubernetes/tree/conftamer-ancestry
+echo 'CD TO K8S SOURCE'
+# Note k8s version must be within skew of other things: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#version-skew-policy
+# (I have kubeadm v1.31.13, but I think what matters is the kind node version in cluster_kind.yaml)
+# Changing k8s version may also require changing KUBE_CROSS_VERSION to build with compatible base image
+K8S_VERSION=v1.31.1
+KUBE_CROSS_VERSION=v1.31.0
+
+# Build patched Go image
+docker build -f ./build/build-image/patched_go.Dockerfile --build-context conftamer=$HOME/projects/config_tracing/go-conftamer-ancestry \
+        -t  kube-cross-conftamer:$KUBE_CROSS_VERSION ./build/build-image
+
+# Build Kubernetes images using patched Go image
+FORCE_HOST_GO=1 KUBE_CROSS_IMAGE=docker.io/library/kube-cross-conftamer KUBE_CROSS_VERSION=$KUBE_CROSS_VERSION \
+ kind build node-image --image kindest/node-conftamer:$K8S_VERSION ./
+
+# 5. Save images
 docker save prometheus-builder:conftamer prometheus-conftamer:v3.2.1 grafana-conftamer:v13.1.0 alertmanager-conftamer:v0.25.1 -o /tmp/conftamer-images.tar
