@@ -4,7 +4,7 @@ set -x
 # Run from prombench - other paths are set in env vars below
 
 # To change the Go patch, update this PLUS the working tree of go-conftamer-ancestry (for alertmanager)
-export GOPATCH=send_recv_all_contents.patch
+export GOPATCH=send_recv_short_contents.patch
 
 # 1. Prometheus
 
