@@ -1,5 +1,12 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+# For each container's logs, only MaxFiles of MaxSize are kept.
+# `kubectl logs` reads the full contents of only the newest file - the rest are on the node.
+kubeadmConfigPatches:
+  - |
+    kind: KubeletConfiguration
+    containerLogMaxSize: "10Gi"
+    containerLogMaxFiles: 5
 nodes:
   - role: control-plane
     image: kindest/node-conftamer:v1.31.1
