@@ -1,5 +1,7 @@
 #!/bin/bash -e
 
+set -x
+
 # Env vars
 export CLUSTER_NAME=prombench
 export PR_NUMBER=16075 # 3.2.1
@@ -11,6 +13,11 @@ export WH_SECRET=""
 export GITHUB_ORG=prometheus
 export GITHUB_REPO=prometheus
 export SERVICEACCOUNT_CLIENT_EMAIL=fakeemail
+# Write files on node to /host/X so `docker cp` from node:/X works (faster than `kubectl cp`)
+export NODE_MOUNT=/host
+# These should be shared with build_images.sh
+export IMAGEDIR="images"
+export IMAGETAR=$IMAGEDIR/conftamer-images.tar
 
 # 0. Per-machine:
 sudo sysctl fs.inotify.max_user_instances=512
@@ -25,13 +32,14 @@ kubectl --context kind-$CLUSTER_NAME taint nodes $CLUSTER_NAME-control-plane nod
 # 1.5.1. Load images
 for n in $(kind get nodes --name $CLUSTER_NAME); do docker exec -i $n ctr -n k8s.io images import --all-platforms - < $IMAGETAR; done
 
-echo 'START TCPDUMP'
-
 # Start tcpdump before deploying infra, to capture messages sent early
 for n in $(kind get nodes --name $CLUSTER_NAME); do
-    echo "kubectl debug node/$n -it --image=nicolaka/netshoot"
-    echo "tcpdump -i any -w any.pcap &"
+    kubectl debug node/$n --image=nicolaka/netshoot \
+        -- tcpdump -i any -w $NODE_MOUNT/any.pcap
 done
+# wait for capture to start
+kubectl get pods -o name | grep node-debugger | \
+    xargs kubectl wait --for=condition=Ready --timeout=120s
 
 # 2. Start infra (including ingress controller)
 ../infra/infra kind resource apply -v CLUSTER_NAME:$CLUSTER_NAME -v DOMAIN_NAME:$DOMAIN_NAME \
@@ -67,35 +75,35 @@ LOGS="logs"
 mkdir -p $LOGS
 pushd $LOGS
 
-# Get ports
-for n in $(kind get nodes --name $CLUSTER_NAME); do
-    echo "kubectl debug node/$n -it --image=nicolaka/netshoot"
-    echo "netstat -tup &> ports.txt"
-done
-
 # Get cluster info
 kubectl get node -o wide &> nodes.txt
 kubectl get pods -A -o wide &> pods.txt
 kubectl get service -A -o wide &> services.txt
 
-# Get pod logs
-POD_LOGS="pods"
-mkdir -p $POD_LOGS
-pushd $POD_LOGS
+# Get pod logs and other info from nodes
+NODE_LOGS="node_logs"
+mkdir -p $NODE_LOGS
+pushd $NODE_LOGS
 
-for namespace in $(kubectl get namespaces --no-headers -o custom-columns=":metadata.name"); do
-    for pod in $(kubectl get pods -n=$namespace --no-headers -o custom-columns=":metadata.name"); do
-        kubectl logs -n=$namespace $pod &> $pod.log
-    done
+for debug_pod in $(kubectl get pods --no-headers -o custom-columns=":metadata.name" | grep debugger); do
+    # Get ports
+    kubectl exec $debug_pod -- sh -c "netstat -tup > ${NODE_MOUNT}/ports.txt"
+done
+
+for n in $(kind get nodes --name $CLUSTER_NAME); do
+    docker cp $n:/ports.txt ${n}_ports.txt
+    # Copy container logs off nodes - unlike `kubectl logs`, includes rotated files
+    docker cp $n:/var/log/pods .
+    docker cp $n:/any.pcap ${n}_any.pcap
+done
+
+# Check for pod log rotation using log line on process init in patch
+pushd pods # pod logs
+find . -name '0.log' | grep -E 'kube-system_kube-|/prometheus/|grafana|alertmanager' | while IFS= read -r log; do
+    # 0.log is the oldest log - it should be the beginning of the container's lifetime
+    head -n 5 "$log" | grep -q "Process start at" || echo "$log APPEARS ROTATED"
 done
 popd
-
-# Copy data off nodes
-for pod in $(kubectl get pods --no-headers -o custom-columns=":metadata.name" | grep debugger); do
-    echo "kubectl cp $pod:/root/any.pcap $pod.pcap"
-    echo "kubectl cp $pod:/root/ports.txt ${pod}_ports.txt"
-done
-
 popd
 
 # Cleanup
