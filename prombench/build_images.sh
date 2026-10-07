@@ -15,11 +15,16 @@ docker build \
         -t prometheus-builder:conftamer \
         ../tools/prometheus-builder
 
-# Build Prometheus image using patched Go image
-docker build -f ../tools/prometheus-builder/Dockerfile.image \
+# Build Prometheus image using patched Go image and local Prometheus source
+PROMSRCPARENT=~/projects/config_tracing
+PROMSRC=$PROMSRCPARENT/prometheus
+pushd $PROMSRCPARENT
+docker build -f $PROMSRC/prombench.Dockerfile \
         --build-arg VERSION=v3.2.1 \
         -t prometheus-conftamer:v3.2.1 \
-        ../tools/prometheus-builder
+        .
+
+popd
 
 # 2. Grafana
 
@@ -30,7 +35,7 @@ docker build \
         -t go-patched:v1.26.4 \
          ../tools/patch-go
 
-# Build Grafana image using patched Go image
+# Build Grafana image using patched Go image and local Grafana source
 GRAFANASRC=~/projects/config_tracing/grafana
 pushd $GRAFANASRC
 docker buildx build \
