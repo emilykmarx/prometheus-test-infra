@@ -71,9 +71,9 @@ kind: Ingress
 metadata:
   name: ingress-comment-monitor
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    caddy.ingress.kubernetes.io/disable-ssl-redirect: "true"
 spec:
-  ingressClassName: nginx
+  ingressClassName: caddy
   rules:
   - http:
       paths:

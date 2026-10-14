@@ -7,9 +7,9 @@ export CLUSTER_NAME=prombench
 export PR_NUMBER=16075 # 3.2.1
 export RELEASE=v3.2.1
 export GRAFANA_ADMIN_PASSWORD=password
-export DOMAIN_NAME="ingress-nginx-controller.ingress-nginx.svc.cluster.local"
-export OAUTH_TOKEN=""
-export WH_SECRET=""
+export DOMAIN_NAME="caddy-caddy-ingress-controller.caddy-system.svc.cluster.local"
+export OAUTH_TOKEN=" "
+export WH_SECRET=" "
 export GITHUB_ORG=prometheus
 export GITHUB_REPO=prometheus
 export SERVICEACCOUNT_CLIENT_EMAIL=fakeemail
@@ -28,6 +28,8 @@ sudo sysctl fs.inotify.max_user_instances=512
 
 # 1.5. Taint
 kubectl --context kind-$CLUSTER_NAME taint nodes $CLUSTER_NAME-control-plane node-role.kubernetes.io/control-plane-
+
+kubectl create namespace caddy-system
 
 # 1.5.1. Load images
 for n in $(kind get nodes --name $CLUSTER_NAME); do docker exec -i $n ctr -n k8s.io images import --all-platforms - < $IMAGETAR; done

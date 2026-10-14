@@ -125,9 +125,10 @@ kind: Ingress
 metadata:
   name: ingress-parca
   annotations:
+    caddy.ingress.kubernetes.io/disable-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
-  ingressClassName: nginx
+  ingressClassName: caddy
   rules:
   - http:
       paths:

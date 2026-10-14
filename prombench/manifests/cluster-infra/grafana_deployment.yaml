@@ -98,9 +98,9 @@ kind: Ingress
 metadata:
   name: ingress-grafana
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    caddy.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
-  ingressClassName: nginx
+  ingressClassName: caddy
   rules:
   - http:
       paths:

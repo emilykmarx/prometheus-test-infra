@@ -269,9 +269,9 @@ kind: Ingress
 metadata:
   name: ingress-prometheus-meta
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    caddy.ingress.kubernetes.io/disable-ssl-redirect: "true"
 spec:
-  ingressClassName: nginx
+  ingressClassName: caddy
   tls:
   - hosts:
     - prombench.prometheus.io
