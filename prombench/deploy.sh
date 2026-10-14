@@ -8,7 +8,9 @@ export PR_NUMBER=16075 # 3.2.1
 export RELEASE=v3.2.1
 export GRAFANA_ADMIN_PASSWORD=password
 export DOMAIN_NAME="ingress-nginx-controller.ingress-nginx.svc.cluster.local"
-export OAUTH_TOKEN=""
+# Must be non-empty: amgithubnotifier exits on an empty token, and the infra tool waits for it to
+# be ready before applying later waves (2_ingress-nginx-controller, 4_kube-state-metrics).
+export OAUTH_TOKEN="dummy"
 export WH_SECRET=""
 export GITHUB_ORG=prometheus
 export GITHUB_REPO=prometheus
@@ -41,24 +43,33 @@ done
 kubectl get pods -o name | grep node-debugger | \
     xargs kubectl wait --for=condition=Ready --timeout=120s
 
-# 2. Start infra (including ingress controller)
+# 2. Start infra (including ingress controller), in the background so the benchmark can start in parallel
 ../infra/infra kind resource apply -v CLUSTER_NAME:$CLUSTER_NAME -v DOMAIN_NAME:$DOMAIN_NAME \
     -v GRAFANA_ADMIN_PASSWORD:$GRAFANA_ADMIN_PASSWORD \
-    -v OAUTH_TOKEN="$(printf $OAUTH_TOKEN | base64 -w 0)" \
-    -v WH_SECRET="$(printf $WH_SECRET | base64 -w 0)" \
+    -v OAUTH_TOKEN="$(printf '%s' "$OAUTH_TOKEN" | base64 -w 0)" \
+    -v WH_SECRET="$(printf '%s' "$WH_SECRET" | base64 -w 0)" \
     -v GITHUB_ORG:$GITHUB_ORG -v GITHUB_REPO:$GITHUB_REPO \
     -v SERVICEACCOUNT_CLIENT_EMAIL:$SERVICEACCOUNT_CLIENT_EMAIL \
-    -f manifests/cluster-infra
-
-echo 'WAIT FOR CLUSTER INFRA'
+    -f manifests/cluster-infra &
+INFRA_PID=$!
 
 # 3. Start benchmark
-echo 'RESET ENV VARS IF NEEDED' # likely need new terminal tab, since amgithubnotifier keeps the previous command from finishing
+BENCH_ARGS=(-v "CLUSTER_NAME:$CLUSTER_NAME"
+    -v "PR_NUMBER:$PR_NUMBER" -v "RELEASE:$RELEASE" -v "DOMAIN_NAME:$DOMAIN_NAME"
+    -v "GITHUB_ORG:$GITHUB_ORG" -v "GITHUB_REPO:$GITHUB_REPO")
 
-../infra/infra kind resource apply -v CLUSTER_NAME:$CLUSTER_NAME \
-    -v PR_NUMBER:$PR_NUMBER -v RELEASE:$RELEASE -v DOMAIN_NAME:$DOMAIN_NAME \
-    -v GITHUB_ORG:${GITHUB_ORG} -v GITHUB_REPO:${GITHUB_REPO} \
-    -f manifests/prombench/benchmark
+# Waves 1-6 don't depend on cluster-infra being finished, so run them concurrently
+EARLY_FILES=()
+for f in manifests/prombench/benchmark/[1-6]_*.yaml; do EARLY_FILES+=(-f "$f"); done
+../infra/infra kind resource apply "${BENCH_ARGS[@]}" "${EARLY_FILES[@]}"
+
+# Ingress creation is rejected by the ingress-nginx admission webhook (failurePolicy: Fail)
+# until the controller is ready, so wait for cluster-infra before applying the ingress routes.
+# `wait` returns cluster-infra's exit status, so `bash -e` stops here if it failed.
+wait $INFRA_PID
+../infra/infra kind resource apply "${BENCH_ARGS[@]}" \
+    -f manifests/prombench/benchmark/7_nginx-ingress-routes.yaml \
+    -f manifests/prombench/benchmark/8_loadgen.yaml
 
 echo 'Wait for Grafana Prombench dashboard to show data on Prombench dashboard, and for alert to fire'
 
@@ -108,3 +119,20 @@ popd
 
 # Cleanup
 ../infra/infra kind cluster delete -v PR_NUMBER:$PR_NUMBER -v CLUSTER_NAME:$CLUSTER_NAME -f manifests/cluster_kind.yaml
+
+# Run parser (not automated)
+pushd $NODE_LOGS/pods
+# Run on rotated files too
+find . -type f | grep -E 'kube-system_kube-|/prometheus/|grafana|alertmanager' | while IFS= read -r log; do
+    # Note there are 4 proxy pods
+    MODULE_PREFIX=github.com/prometheus/prometheus
+    MODULE_PREFIX=github.com/grafana/grafana # XXX
+    MODULE_PREFIX=k8s.io/apiserver
+    OUT=prometheus
+    OUT=grafana # XXX
+    OUT=k8s_apiserver
+    echo "$GOPLS/gopls conftamer -m=$MODULE_PREFIX \
+    -send_log=$log \
+    -out=$PROMBENCH/logs/stacks/$OUT &> $GOPLS/tmp.md"
+done
+popd
