@@ -119,20 +119,3 @@ popd
 
 # Cleanup
 ../infra/infra kind cluster delete -v PR_NUMBER:$PR_NUMBER -v CLUSTER_NAME:$CLUSTER_NAME -f manifests/cluster_kind.yaml
-
-# Run parser (not automated)
-pushd $NODE_LOGS/pods
-# Run on rotated files too
-find . -type f | grep -E 'kube-system_kube-|/prometheus/|grafana|alertmanager' | while IFS= read -r log; do
-    # Note there are 4 proxy pods
-    MODULE_PREFIX=github.com/prometheus/prometheus
-    MODULE_PREFIX=github.com/grafana/grafana # XXX
-    MODULE_PREFIX=k8s.io/apiserver
-    OUT=prometheus
-    OUT=grafana # XXX
-    OUT=k8s_apiserver
-    echo "$GOPLS/gopls conftamer -m=$MODULE_PREFIX \
-    -send_log=$log \
-    -out=$PROMBENCH/logs/stacks/$OUT &> $GOPLS/tmp.md"
-done
-popd
