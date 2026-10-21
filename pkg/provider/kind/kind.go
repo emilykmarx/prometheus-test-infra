@@ -110,7 +110,7 @@ func (c *KIND) K8SDeploymentsParse(*kingpin.ParseContext) error {
 		decode := scheme.Codecs.UniversalDeserializer().Decode
 		k8sObjects := make([]runtime.Object, 0)
 
-		for _, text := range strings.Split(string(deployment.Content), provider.Separator) {
+		for _, text := range provider.SplitDocuments(deployment.Content) {
 			text = strings.TrimSpace(text)
 			if len(text) == 0 {
 				continue
@@ -118,7 +118,7 @@ func (c *KIND) K8SDeploymentsParse(*kingpin.ParseContext) error {
 
 			resource, _, err := decode([]byte(text), nil, nil)
 			if err != nil {
-				return fmt.Errorf("decoding the resource file:%v, section:%v...: %w", deployment.FileName, text[:100], err)
+				return fmt.Errorf("decoding the resource file:%v, section:%v...: %w", deployment.FileName, provider.Truncate(text, 100), err)
 			}
 			if resource == nil {
 				continue

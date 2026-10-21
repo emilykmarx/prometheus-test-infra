@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -30,6 +31,23 @@ const (
 	Separator        = "---"
 	globalRetryTime  = 10 * time.Second
 )
+
+// separatorLine matches a YAML document separator: "---" alone on a line. Splitting on
+// every "---" would also split values that contain it, such as PEM blocks.
+var separatorLine = regexp.MustCompile(`(?m)^---[ \t]*$`)
+
+// SplitDocuments splits multi-document YAML content into its documents.
+func SplitDocuments(content []byte) []string {
+	return separatorLine.Split(string(content), -1)
+}
+
+// Truncate returns s cut to at most n bytes, for use in error messages.
+func Truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
 
 // DeploymentResource holds list of variables and corresponding files.
 type DeploymentResource struct {
