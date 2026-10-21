@@ -59,34 +59,139 @@ metadata:
   name: prometheus-meta
 data:
   prometheus.yaml: |
+    # Fuzzed version of the prometheus.yaml key in
+    # manifests/cluster-infra/3b_prometheus-meta.yaml (Prometheus v3.2.1).
+    # Every string-typed parameter that has a valid value in this application is set;
+    # see fuzzed_messages.md for the expected effect on HTTP traffic.
+    # 16075 is PR_NUMBER from deploy.sh.
+    # The inline cert/key are a throwaway self-signed pair (CN=prometheus-meta-fuzz).
+
     global:
       scrape_interval: 5s
+      scrape_protocols: [OpenMetricsText1.0.0, PrometheusText1.0.0, OpenMetricsText0.0.1, PrometheusText0.0.4]
+      external_labels:
+        monitor: prometheus-meta
+        cluster: prombench
+      query_log_file: /data/query.log
+      scrape_failure_log_file: /data/scrape_failures.log
+      metric_name_validation_scheme: utf8
 
     rule_files:
     - /etc/prometheus/alerts/*.yml
 
+    # Matches no files in this deployment.
+    scrape_config_files:
+    - /etc/prometheus/config/scrape_config_*.yml
+
     alerting:
+      alert_relabel_configs:
+      - source_labels: [alertname]
+        separator: ;
+        regex: (.+)
+        target_label: alert_source
+        replacement: prometheus-meta
+        action: replace
       alertmanagers:
       - kubernetes_sd_configs:
         - role: pod
+          api_server: https://kubernetes.default.svc:443
+          namespaces:
+            names: [default]
+          selectors:
+          - role: pod
+            label: app=alertmanager
+            field: metadata.namespace=default
+          authorization:
+            type: Bearer
+            credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            cert: &fuzz_cert |
+              -----BEGIN CERTIFICATE-----
+              MIIBkzCCATmgAwIBAgIUCxeJ0eAT+K/6poPqJ3gJwWuRlIQwCgYIKoZIzj0EAwIw
+              HzEdMBsGA1UEAwwUcHJvbWV0aGV1cy1tZXRhLWZ1enowHhcNMjYxMDE0MjIxMjU0
+              WhcNMzYxMDExMjIxMjU0WjAfMR0wGwYDVQQDDBRwcm9tZXRoZXVzLW1ldGEtZnV6
+              ejBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABDQHQAdT3UWtcoHB+BhAQbtxgmsU
+              SmaaGLzja3nCJRL9nVMgHWg2FWBJjljEZEFSjsPRsPLLf1GUKU+u0lbDDOajUzBR
+              MB0GA1UdDgQWBBQBCJCP6P/qiI1E/Gqf4qceANuKqDAfBgNVHSMEGDAWgBQBCJCP
+              6P/qiI1E/Gqf4qceANuKqDAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gA
+              MEUCIQDh9FwF0ac1ctTIckVCSsSNCMV4sv1PZ9SRYnIjR1w0gQIgE6wEXqMEkTDf
+              0/sywCHH2mB0QpQCzfum9/mKdZi3Gvg=
+              -----END CERTIFICATE-----
+            key: &fuzz_key |
+              -----BEGIN PRIVATE KEY-----
+              MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgHIP/FB46MOD2OcsA
+              nkFLlvjsW2/vCWTh0JVcwyj3+WmhRANCAAQ0B0AHU91FrXKBwfgYQEG7cYJrFEpm
+              mhi842t5wiUS/Z1TIB1oNhVgSY5YxGRBUo7D0bDyy39RlClPrtJWwwzm
+              -----END PRIVATE KEY-----
+            server_name: kubernetes.default.svc.cluster.local
+            min_version: TLS13
+            max_version: TLS13
+          # No forward proxy exists in the cluster; no_proxy bypasses it for every
+          # address Prometheus contacts (pod IPs 10.244/16, hostNetwork pods on the
+          # kind node network 172.19/16, *.svc names), so proxy_url is never dialed.
+          proxy_url: http://127.0.0.1:3128
+          no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+          proxy_connect_header:
+            X-Proxy-Client: [prometheus-meta]
+          http_headers:
+            X-Fuzz-Source:
+              values: [alertmanager-pod-sd]
+              secrets: [fuzz-header-secret]
+              files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
+        api_version: v2
+        path_prefix: /alertmanager
+        scheme: http
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          cert: *fuzz_cert
+          key: *fuzz_key
+          server_name: alertmanager.default.svc
+          min_version: TLS12
+          max_version: TLS13
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        proxy_url: http://127.0.0.1:3128
+        no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+        proxy_connect_header:
+          X-Proxy-Client: [prometheus-meta]
+        http_headers:
+          X-Fuzz-Source:
+            values: [alertmanager-notify]
+            secrets: [fuzz-header-secret]
+            files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
         relabel_configs:
         - source_labels: [__meta_kubernetes_namespace]
           regex: default
           action: keep
+          separator: ;
+          target_label: __tmp_fuzz
+          replacement: $1
         - source_labels: [__meta_kubernetes_pod_label_app]
           regex: alertmanager
           action: keep
+          separator: ;
+          target_label: __tmp_fuzz
+          replacement: $1
         - source_labels: [__meta_kubernetes_pod_label_app]
           regex: alertmanager
           action: replace
           target_label: __alerts_path__
           replacement: '/alertmanager/api/v2/alerts'
+          separator: ;
         - source_labels: [__meta_kubernetes_pod_container_port_number]
-          regex:
+          # Was empty (matches only ""); '^$' is the same match.
+          regex: '^$'
           action: drop
+          separator: ;
+          target_label: __tmp_fuzz
+          replacement: $1
+        alert_relabel_configs:
+        - source_labels: [severity]
+          separator: ;
+          regex: (.+)
+          target_label: severity_level
+          replacement: $1
+          action: replace
 
     scrape_configs:
 
@@ -95,112 +200,525 @@ data:
       tls_config:
         ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         insecure_skip_verify: true
+        cert: *fuzz_cert
+        key: *fuzz_key
+        server_name: kubernetes.default.svc.cluster.local
+        min_version: TLS13
+        max_version: TLS13
       bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      # Overridden per target by the __metrics_path__ relabel rule below.
+      metrics_path: /metrics
+      scrape_protocols: [PrometheusText0.0.4]
+      fallback_scrape_protocol: PrometheusText0.0.4
+      metric_name_validation_scheme: legacy
+      params:
+        fuzz_job: [kubelet]
+      scrape_failure_log_file: /data/scrape_failures_kubelet.log
+      proxy_url: http://127.0.0.1:3128
+      no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+      proxy_connect_header:
+        X-Proxy-Client: [prometheus-meta]
+      http_headers:
+        X-Fuzz-Source:
+          values: [kubelet-scrape]
+          secrets: [fuzz-header-secret]
+          files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
 
       kubernetes_sd_configs:
+      # Identical to the cadvisor job's SD config so both jobs keep sharing one node watch.
       - role: node
+        api_server: https://kubernetes.default.svc:443
+        # Ignored for role: node (nodes are cluster-scoped).
+        namespaces:
+          names: [default]
+        selectors:
+        - role: node
+          label: kubernetes.io/os=linux
+          field: spec.unschedulable=false
+        authorization:
+          type: Bearer
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          cert: *fuzz_cert
+          key: *fuzz_key
+          server_name: kubernetes.default.svc.cluster.local
+          min_version: TLS13
+          max_version: TLS13
+        proxy_url: http://127.0.0.1:3128
+        no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+        proxy_connect_header:
+          X-Proxy-Client: [prometheus-meta]
+        http_headers:
+          X-Fuzz-Source:
+            values: [node-sd]
+            secrets: [fuzz-header-secret]
+            files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
 
       relabel_configs:
       - action: labelmap
         regex: __meta_kubernetes_node_label_(.+)
+        source_labels: [__meta_kubernetes_node_name]
+        separator: ;
+        target_label: __tmp_fuzz
+        replacement: $1
       - target_label: __address__
         replacement: kubernetes.default.svc:443
+        source_labels: [__meta_kubernetes_node_name]
+        separator: ;
+        regex: (.*)
+        action: replace
       - source_labels: [__meta_kubernetes_node_name]
         regex: (.+)
         target_label: __metrics_path__
         replacement: /api/v1/nodes/${1}/proxy/metrics
+        separator: ;
+        action: replace
 
     - job_name: kube-state-metrics
       honor_timestamps: true
       scheme: http
+      metrics_path: /metrics
+      scrape_protocols: [PrometheusProto, OpenMetricsText1.0.0, PrometheusText0.0.4]
+      fallback_scrape_protocol: PrometheusText0.0.4
+      metric_name_validation_scheme: utf8
+      params:
+        fuzz_job: [kube-state-metrics]
+      scrape_failure_log_file: /data/scrape_failures_kube-state-metrics.log
+      basic_auth:
+        username: prometheus-meta
+        password_file: /var/run/secrets/kubernetes.io/serviceaccount/namespace
+      # TLS settings are parsed but unused: this job scrapes over http.
+      tls_config:
+        ca: *fuzz_cert
+        cert: *fuzz_cert
+        key: *fuzz_key
+        server_name: kube-state-metrics.kube-system.svc
+        min_version: TLS12
+        max_version: TLS13
+      proxy_url: http://127.0.0.1:3128
+      no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+      proxy_connect_header:
+        X-Proxy-Client: [prometheus-meta]
+      http_headers:
+        X-Fuzz-Source:
+          values: [kube-state-metrics-scrape]
+          secrets: [fuzz-header-secret]
+          files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
       kubernetes_sd_configs:
       - role: service
+        api_server: https://kubernetes.default.svc:443
+        namespaces:
+          names: [kube-system]
+        selectors:
+        - role: service
+          label: k8s-app=kube-state-metrics
+          field: metadata.name=kube-state-metrics
+        authorization:
+          type: Bearer
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          cert: *fuzz_cert
+          key: *fuzz_key
+          server_name: kubernetes.default.svc.cluster.local
+          min_version: TLS13
+          max_version: TLS13
+        proxy_url: http://127.0.0.1:3128
+        no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+        proxy_connect_header:
+          X-Proxy-Client: [prometheus-meta]
+        http_headers:
+          X-Fuzz-Source:
+            values: [service-sd]
+            secrets: [fuzz-header-secret]
+            files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
       relabel_configs:
       - separator: ;
         regex: __meta_kubernetes_service_label_(.+)
         replacement: $1
         action: labelmap
+        source_labels: [__meta_kubernetes_service_name]
+        target_label: __tmp_fuzz
       - source_labels: [__meta_kubernetes_service_label_k8s_app]
         separator: ;
         regex: kube-state-metrics
         replacement: $1
         action: keep
+        target_label: __tmp_fuzz
       metric_relabel_configs:
       - action: replace
         source_labels: [__name__, namespace]
         regex: kube_namespace_created;prombench-(\d+)
         target_label: prNum
         replacement: $1
+        separator: ;
 
     - job_name: cadvisor
       scheme: https
       tls_config:
         ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         insecure_skip_verify: true
+        cert: *fuzz_cert
+        key: *fuzz_key
+        server_name: kubernetes.default.svc.cluster.local
+        min_version: TLS13
+        max_version: TLS13
       bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      # Overridden per target by the __metrics_path__ relabel rule below.
+      metrics_path: /metrics
+      scrape_protocols: [PrometheusText0.0.4]
+      fallback_scrape_protocol: PrometheusText0.0.4
+      metric_name_validation_scheme: legacy
+      params:
+        fuzz_job: [cadvisor]
+      scrape_failure_log_file: /data/scrape_failures_cadvisor.log
+      proxy_url: http://127.0.0.1:3128
+      no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+      proxy_connect_header:
+        X-Proxy-Client: [prometheus-meta]
+      http_headers:
+        X-Fuzz-Source:
+          values: [cadvisor-scrape]
+          secrets: [fuzz-header-secret]
+          files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
 
       kubernetes_sd_configs:
+      # Identical to the kubelet job's SD config so both jobs keep sharing one node watch.
       - role: node
+        api_server: https://kubernetes.default.svc:443
+        # Ignored for role: node (nodes are cluster-scoped).
+        namespaces:
+          names: [default]
+        selectors:
+        - role: node
+          label: kubernetes.io/os=linux
+          field: spec.unschedulable=false
+        authorization:
+          type: Bearer
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          cert: *fuzz_cert
+          key: *fuzz_key
+          server_name: kubernetes.default.svc.cluster.local
+          min_version: TLS13
+          max_version: TLS13
+        proxy_url: http://127.0.0.1:3128
+        no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+        proxy_connect_header:
+          X-Proxy-Client: [prometheus-meta]
+        http_headers:
+          X-Fuzz-Source:
+            values: [node-sd]
+            secrets: [fuzz-header-secret]
+            files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
 
       relabel_configs:
       - action: labelmap
         regex: __meta_kubernetes_node_label_(.+)
+        source_labels: [__meta_kubernetes_node_name]
+        separator: ;
+        target_label: __tmp_fuzz
+        replacement: $1
       - target_label: __address__
         replacement: kubernetes.default.svc:443
+        source_labels: [__meta_kubernetes_node_name]
+        separator: ;
+        regex: (.*)
+        action: replace
       - source_labels: [__meta_kubernetes_node_name]
         regex: (.+)
         target_label: __metrics_path__
         replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+        separator: ;
+        action: replace
 
     - job_name: endpoints
       tls_config:
         ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         insecure_skip_verify: true
+        cert: *fuzz_cert
+        key: *fuzz_key
+        server_name: prometheus.prombench.svc
+        min_version: TLS12
+        max_version: TLS13
       bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      scheme: http
+      metrics_path: /metrics
+      scrape_protocols: [OpenMetricsText1.0.0, PrometheusText1.0.0, PrometheusText0.0.4]
+      fallback_scrape_protocol: PrometheusText0.0.4
+      metric_name_validation_scheme: utf8
+      params:
+        fuzz_job: [endpoints]
+      scrape_failure_log_file: /data/scrape_failures_endpoints.log
+      proxy_url: http://127.0.0.1:3128
+      no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+      proxy_connect_header:
+        X-Proxy-Client: [prometheus-meta]
+      http_headers:
+        X-Fuzz-Source:
+          values: [endpoints-scrape]
+          secrets: [fuzz-header-secret]
+          files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
 
       kubernetes_sd_configs:
       - role: endpoints
+        api_server: https://kubernetes.default.svc:443
+        namespaces:
+          names: [default, prombench-16075]
+        selectors:
+        - role: endpoints
+          label: app in (prometheus,prometheus-meta,alertmanager,node-exporter,loadgen-querier,sink)
+          field: metadata.name!=kubernetes
+        - role: service
+          label: app in (prometheus,prometheus-meta,alertmanager,node-exporter,loadgen-querier,sink)
+          field: metadata.name!=kubernetes
+        - role: pod
+          label: app
+          field: metadata.namespace!=kube-system
+        authorization:
+          type: Bearer
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          cert: *fuzz_cert
+          key: *fuzz_key
+          server_name: kubernetes.default.svc.cluster.local
+          min_version: TLS13
+          max_version: TLS13
+        proxy_url: http://127.0.0.1:3128
+        no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+        proxy_connect_header:
+          X-Proxy-Client: [prometheus-meta]
+        http_headers:
+          X-Fuzz-Source:
+            values: [endpoints-sd]
+            secrets: [fuzz-header-secret]
+            files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
 
       relabel_configs:
       - action: keep
         source_labels: [__meta_kubernetes_service_label_app]
         regex: prometheus|prometheus-meta|alertmanager|node-exporter|loadgen-querier|sink
+        separator: ;
+        target_label: __tmp_fuzz
+        replacement: $1
       - action: replace
         source_labels: [__meta_kubernetes_service_label_app]
         target_label: job
+        separator: ;
+        regex: (.*)
+        replacement: $1
       - action: replace
         source_labels: [__meta_kubernetes_namespace]
         target_label: namespace
+        separator: ;
+        regex: (.*)
+        replacement: $1
       - action: replace
         source_labels: [__meta_kubernetes_service_label_prometheus]
         target_label: prometheus
+        separator: ;
+        regex: (.*)
+        replacement: $1
       - action: replace
         source_labels: [__meta_kubernetes_pod_node_name]
         target_label: nodeName
+        separator: ;
+        regex: (.*)
+        replacement: $1
       - action: replace
         source_labels: [__meta_kubernetes_pod_label_node]
         target_label: node
+        separator: ;
+        regex: (.*)
+        replacement: $1
       - action: replace
         source_labels: [__meta_kubernetes_namespace,__meta_kubernetes_service_label_prometheus]
         regex: prombench-(\d+);test-pr-\d+
         target_label: __metrics_path__
         replacement: /${1}/prometheus-pr/metrics
+        separator: ;
       - action: replace
         source_labels: [__meta_kubernetes_namespace,__meta_kubernetes_service_label_prometheus]
         regex: prombench-(\d+);test-(?:master|main|v.+)
         target_label: __metrics_path__
         replacement: /${1}/prometheus-release/metrics
+        separator: ;
       - action: replace
         source_labels: [__meta_kubernetes_namespace,__meta_kubernetes_service_label_prometheus]
         regex: default;meta
         target_label: __metrics_path__
         replacement: /prometheus-meta/metrics
+        separator: ;
       - action: replace
         source_labels: [__meta_kubernetes_namespace,__meta_kubernetes_service_label_app]
         regex: default;alertmanager
         target_label: __metrics_path__
         replacement: /alertmanager/metrics
+        separator: ;
 
+    # New job: hosts the static, DNS and file SD string parameters. Loki was not scraped
+    # before. The static and DNS targets are the same Loki pod under two instance names.
+    - job_name: loki
+      scheme: http
+      metrics_path: /metrics
+      scrape_protocols: [OpenMetricsText1.0.0, PrometheusText0.0.4]
+      fallback_scrape_protocol: PrometheusText0.0.4
+      metric_name_validation_scheme: utf8
+      params:
+        fuzz_job: [loki]
+      scrape_failure_log_file: /data/scrape_failures_loki.log
+      authorization:
+        type: Token
+        credentials: fuzz-loki-credentials
+      # TLS settings are parsed but unused: this job scrapes over http.
+      tls_config:
+        ca: *fuzz_cert
+        cert: *fuzz_cert
+        key: *fuzz_key
+        server_name: loki.default.svc
+        min_version: TLS12
+        max_version: TLS13
+      proxy_url: http://127.0.0.1:3128
+      no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+      proxy_connect_header:
+        X-Proxy-Client: [prometheus-meta]
+      http_headers:
+        X-Fuzz-Source:
+          values: [loki-scrape]
+          secrets: [fuzz-header-secret]
+          files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
+      static_configs:
+      - targets: [loki.default.svc:3100]
+        labels:
+          discovery: static
+      dns_sd_configs:
+      - names: [_http-metrics._tcp.loki-headless.default.svc.cluster.local]
+        type: SRV
+      # Matches no files in this deployment.
+      file_sd_configs:
+      - files: [/etc/prometheus/config/file_sd_*.json]
+      relabel_configs:
+      - source_labels: [__meta_dns_name]
+        separator: ;
+        regex: (.+)
+        target_label: discovery
+        replacement: dns
+        action: replace
+      metric_relabel_configs:
+      - source_labels: [__name__]
+        separator: ;
+        regex: go_gc_.+
+        target_label: __tmp_fuzz
+        replacement: $1
+        action: drop
+
+    remote_write:
+    - url: http://prometheus-sink.prombench-16075.svc:9011/sink/prw
+      name: meta-sink-basic-auth
+      protobuf_message: prometheus.WriteRequest
+      headers:
+        X-SINK-SOURCE: prometheus-meta
+      write_relabel_configs:
+      - source_labels: [__name__]
+        separator: ;
+        regex: up|scrape_.+
+        target_label: __tmp_fuzz
+        replacement: $1
+        action: keep
+      basic_auth:
+        username_file: /var/run/secrets/kubernetes.io/serviceaccount/namespace
+        password: fuzz-sink-password
+      # TLS settings are parsed but unused: the sink is http.
+      tls_config:
+        ca: *fuzz_cert
+        cert: *fuzz_cert
+        key: *fuzz_key
+        server_name: prometheus-sink.prombench-16075.svc
+        min_version: TLS12
+        max_version: TLS13
+      proxy_url: http://127.0.0.1:3128
+      no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+      proxy_connect_header:
+        X-Proxy-Client: [prometheus-meta]
+      http_headers:
+        X-Fuzz-Source:
+          values: [remote-write-basic-auth]
+          secrets: [fuzz-header-secret]
+          files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
+    - url: http://prometheus-sink.prombench-16075.svc:9011/sink/prw
+      name: meta-sink-sigv4
+      # io.prometheus.write.v2.Request is rejected: it needs
+      # --enable-feature=metadata-wal-records, which prometheus-meta does not set.
+      protobuf_message: prometheus.WriteRequest
+      headers:
+        X-SINK-SOURCE: prometheus-meta
+      write_relabel_configs:
+      - source_labels: [__name__]
+        separator: ;
+        regex: up|scrape_.+
+        target_label: __tmp_fuzz
+        replacement: $1
+        action: keep
+      # Signed locally with static fake keys; the sink does not verify signatures.
+      sigv4:
+        region: us-east-1
+        access_key: AKIAFUZZPROMETHEUSMETA
+        secret_key: fuzz-sigv4-secret-key
+      # TLS settings are parsed but unused: the sink is http.
+      tls_config:
+        ca: *fuzz_cert
+        cert: *fuzz_cert
+        key: *fuzz_key
+        server_name: prometheus-sink.prombench-16075.svc
+        min_version: TLS12
+        max_version: TLS13
+      proxy_url: http://127.0.0.1:3128
+      no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+      proxy_connect_header:
+        X-Proxy-Client: [prometheus-meta]
+      http_headers:
+        X-Fuzz-Source:
+          values: [remote-write-sigv4]
+          secrets: [fuzz-header-secret]
+          files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
+
+    # Only used by queries that contain fuzz_remote_read="true" and reach back before
+    # prometheus-meta's oldest local data (read_recent defaults to false).
+    remote_read:
+    - url: http://prometheus-test-v3-2-1.prombench-16075.svc/16075/prometheus-release/api/v1/read
+      name: release-prometheus
+      required_matchers:
+        fuzz_remote_read: "true"
+      headers:
+        X-Fuzz-Remote-Read: prometheus-meta
+      authorization:
+        type: Bearer
+        credentials: fuzz-remote-read-token
+      # TLS settings are parsed but unused: the target is http.
+      tls_config:
+        ca: *fuzz_cert
+        cert: *fuzz_cert
+        key: *fuzz_key
+        server_name: prometheus-test-v3-2-1.prombench-16075.svc
+        min_version: TLS12
+        max_version: TLS13
+      proxy_url: http://127.0.0.1:3128
+      no_proxy: localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local
+      proxy_connect_header:
+        X-Proxy-Client: [prometheus-meta]
+      http_headers:
+        X-Fuzz-Source:
+          values: [remote-read]
+          secrets: [fuzz-header-secret]
+          files: [/var/run/secrets/kubernetes.io/serviceaccount/namespace]
+
+    # Inert: the OTLP receiver is not enabled (--web.enable-otlp-receiver is not set).
+    otlp:
+      promote_resource_attributes: [service.instance.id, k8s.pod.name]
+      translation_strategy: NoUTF8EscapingWithSuffixes
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -255,6 +773,8 @@ spec:
         - name: storage
           mountPath: /data
           subPath: prometheus-data
+        - name: argmatch-out
+          mountPath: /argmatch-out
         ports:
         - name: prom-web
           containerPort: 9090
@@ -268,6 +788,12 @@ spec:
       - name: storage
         persistentVolumeClaim:
           claimName: prometheus-meta
+      - name: argmatch-out
+        hostPath:
+          # Path on the kind node; manifests/cluster_kind.yaml mounts the host's
+          # dump_ancestors/argmatch-out there on the main-node (control-plane) node.
+          path: /argmatch-out
+          type: Directory
       terminationGracePeriodSeconds: 300
       nodeSelector:
         cloud.google.com/gke-nodepool: main-node

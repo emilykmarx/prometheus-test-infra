@@ -10,6 +10,10 @@ kubeadmConfigPatches:
 nodes:
   - role: control-plane
     image: kindest/node-conftamer:v1.31.1
+    # Mounted into the prometheus-meta pod (manifests/cluster-infra/3b_prometheus-meta.yaml).
+    extraMounts:
+      - hostPath: /home/emily/projects/config_tracing/dump_ancestors/argmatch-out
+        containerPath: /argmatch-out
     kubeadmConfigPatches:
       - |
         kind: InitConfiguration
