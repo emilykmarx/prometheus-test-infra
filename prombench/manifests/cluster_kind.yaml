@@ -9,7 +9,6 @@ kubeadmConfigPatches:
     containerLogMaxFiles: 5
 nodes:
   - role: control-plane
-    image: kindest/node-conftamer:v1.31.1
     # Mounted into the prometheus-meta pod (manifests/cluster-infra/3b_prometheus-meta.yaml).
     extraMounts:
       - hostPath: /home/emily/projects/config_tracing/dump_ancestors/argmatch-out
@@ -21,7 +20,6 @@ nodes:
           kubeletExtraArgs:
             node-labels: "node-name=main-node,cloud.google.com/gke-nodepool=main-node"
   - role: worker
-    image: kindest/node-conftamer:v1.31.1
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration
@@ -29,7 +27,6 @@ nodes:
           kubeletExtraArgs:
             node-labels: "isolation=prometheus,node-name=prometheus-{{ .PR_NUMBER }},cloud.google.com/gke-nodepool=prometheus-{{ .PR_NUMBER }}"
   - role: worker
-    image: kindest/node-conftamer:v1.31.1
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration
@@ -37,7 +34,6 @@ nodes:
           kubeletExtraArgs:
             node-labels: "isolation=prometheus,node-name=prometheus-{{ .PR_NUMBER }},cloud.google.com/gke-nodepool=prometheus-{{ .PR_NUMBER }}"
   - role: worker
-    image: kindest/node-conftamer:v1.31.1
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration

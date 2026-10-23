@@ -786,7 +786,7 @@ spec:
           sleep 30
       containers:
       - name: prometheus
-        image: prometheus-conftamer:{{ .RELEASE }}
+        image: quay.io/prometheus/prometheus:{{ .RELEASE }}
         imagePullPolicy: IfNotPresent
         command: [ "/bin/prometheus" ]
         args: [

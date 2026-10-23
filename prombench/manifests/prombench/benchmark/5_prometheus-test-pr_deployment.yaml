@@ -763,9 +763,8 @@ spec:
         runAsUser: 0
       initContainers:
       - name: prometheus-builder
-      # local prometheus builder image
-        image: prometheus-builder:conftamer
-        imagePullPolicy: IfNotPresent
+        image: docker.io/prominfra/prometheus-builder:master
+        imagePullPolicy: Always
         env:
         - name: PR_NUMBER
           value: "{{ .PR_NUMBER }}"
