@@ -126,7 +126,6 @@ metadata:
   name: ingress-parca
   annotations:
     caddy.ingress.kubernetes.io/disable-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   ingressClassName: caddy
   rules:
@@ -136,6 +135,6 @@ spec:
           service:
             name: parca
             port:
-              name: parca-web
+              number: 80
         path: /profiles
         pathType: Prefix

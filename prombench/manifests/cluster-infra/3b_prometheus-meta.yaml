@@ -283,6 +283,6 @@ spec:
           service:
             name: prometheus-meta
             port:
-              name: prom-web
+              number: 80
         path: /prometheus-meta
         pathType: Prefix

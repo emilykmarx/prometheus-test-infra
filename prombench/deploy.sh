@@ -8,8 +8,8 @@ export PR_NUMBER=16075 # 3.2.1
 export RELEASE=v3.2.1
 export GRAFANA_ADMIN_PASSWORD=password
 export DOMAIN_NAME="caddy-caddy-ingress-controller.caddy-system.svc.cluster.local"
-export OAUTH_TOKEN=" "
-export WH_SECRET=" "
+export OAUTH_TOKEN="placeholder"
+export WH_SECRET="placeholder"
 export GITHUB_ORG=prometheus
 export GITHUB_REPO=prometheus
 export SERVICEACCOUNT_CLIENT_EMAIL=fakeemail
@@ -20,7 +20,7 @@ export IMAGEDIR="images"
 export IMAGETAR=$IMAGEDIR/conftamer-images.tar
 
 # 0. Per-machine:
-sudo sysctl fs.inotify.max_user_instances=512
+# sudo sysctl fs.inotify.max_user_instances=512
 
 # 1. Start cluster
 ../infra/infra kind cluster create -v PR_NUMBER:$PR_NUMBER -v CLUSTER_NAME:$CLUSTER_NAME \
@@ -30,6 +30,7 @@ sudo sysctl fs.inotify.max_user_instances=512
 kubectl --context kind-$CLUSTER_NAME taint nodes $CLUSTER_NAME-control-plane node-role.kubernetes.io/control-plane-
 
 kubectl create namespace caddy-system
+kubectl apply -f ./caddy-ingress.yaml
 
 # 1.5.1. Load images
 for n in $(kind get nodes --name $CLUSTER_NAME); do docker exec -i $n ctr -n k8s.io images import --all-platforms - < $IMAGETAR; done

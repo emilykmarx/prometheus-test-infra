@@ -81,6 +81,6 @@ spec:
           service:
             name: comment-monitor
             port:
-              name: cm-port
+              number: 80
         path: /hook
         pathType: Prefix
