@@ -120,3 +120,24 @@ spec:
     targetPort: metrics5
   selector:
     app: fake-webserver
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-fake-webserver
+  namespace: prombench-16075
+  annotations:
+    caddy.ingress.kubernetes.io/disable-ssl-redirect: "true"
+spec:
+  ingressClassName: caddy
+  rules:
+    - http:
+        paths:
+        - path: /fake-webserver
+          pathType: Prefix
+          backend: 
+            service:
+              name: fake-webserver
+              port: 
+                number: 8080
