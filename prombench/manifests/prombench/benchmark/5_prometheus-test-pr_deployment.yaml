@@ -762,21 +762,6 @@ spec:
       securityContext:
         runAsUser: 0
       initContainers:
-      - name: prometheus-builder
-        image: docker.io/prominfra/prometheus-builder:master
-        imagePullPolicy: Always
-        env:
-        - name: PR_NUMBER
-          value: "{{ .PR_NUMBER }}"
-        - name: VOLUME_DIR
-          value: "/prometheus-builder" # same as mountPath
-        - name: GITHUB_ORG
-          value: "{{ .GITHUB_ORG }}"
-        - name: GITHUB_REPO
-          value: "{{ .GITHUB_REPO }}"
-        volumeMounts:
-        - name: prometheus-executable
-          mountPath: /prometheus-builder
       # Check if the release Prometheus is already up via /-/ready (rolling
       # restart case). If so, skip sync and start immediately. Otherwise listen
       # on port 9090 and wait until both peers have connected, so both
@@ -800,10 +785,8 @@ spec:
           done
       containers:
       - name: prometheus
-        image: quay.io/prometheus/busybox:latest
-        imagePullPolicy: Always
-        # The prometheus-builder takes a while to build
-        # so make sure to start it before the release deployment.
+        image: quay.io/prometheus/prometheus:v3.2.1
+        imagePullPolicy: IfNotPresent
         # Mark it ready only when prometheus is started.
         # This way we have the least time difference in the scraped metrics.
         readinessProbe:
@@ -812,7 +795,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 2
           failureThreshold: 30
-        command: ["/usr/bin/prometheus"]
+        command: ["/bin/prometheus"]
         args: [
           "--web.external-url=http://{{ .DOMAIN_NAME }}/{{ .PR_NUMBER }}/prometheus-pr",
           "--storage.tsdb.path=/prometheus",
@@ -836,8 +819,6 @@ spec:
           mountPath: /etc/prometheus
         - name: instance-ssd
           mountPath: /prometheus
-        - name: prometheus-executable
-          mountPath: /usr/bin
         ports:
         - name: prom-web
           containerPort: 9090
@@ -849,8 +830,6 @@ spec:
         hostPath:
           # /mnt is where GKE keeps it's SSD.
           path: /mnt/disks/ssd0
-      - name: prometheus-executable
-        emptyDir: {}
       terminationGracePeriodSeconds: 300
       nodeSelector:
         node-name: prometheus-{{ .PR_NUMBER }}
