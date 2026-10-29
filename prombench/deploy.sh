@@ -74,4 +74,13 @@ wait $INFRA_PID
     -f manifests/prombench/benchmark/7_nginx-ingress-routes.yaml \
     -f manifests/prombench/benchmark/8_loadgen.yaml
 
-echo 'Wait for Grafana Prombench dashboard to show data on Prombench dashboard, and for alert to fire'
+# Interact with app: e.g. view dashboard, reload config
+# Check for alert to fire
+kubectl --context kind-prombench exec deploy/prometheus-meta -c prometheus -- \
+  wget -qO- localhost:9090/prometheus-meta/metrics | grep '^prometheus_notifications_sent_total'
+
+# prometheus_notifications_sent_total{alertmanager="http://10.244.0.7:9093/alertmanager/api/v2/alerts"}: the number of alerts delivered to that Alertmanager. Each firing or resolved alert counts once, and one HTTP POST can carry several.
+# prometheus_notifications_errors_total: sends that failed. If this is above 0, Prometheus tried but at least some sends didn't get through.
+# prometheus_notifications_dropped_total: alerts dropped before sending, for example because no Alertmanager had been discovered yet or the queue was full.
+# prometheus_notifications_alertmanagers_discovered: if this is 0, nothing can be sent.
+# To confirm from the receiving side, check alertmanager_alerts_received_total{status="firing"|"resolved"} on the Alertmanager pod's /alertmanager/metrics. That counter resets when Alertmanager restarts, not with prometheus-meta.
