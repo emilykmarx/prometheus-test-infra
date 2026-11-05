@@ -1,9 +1,11 @@
 #!/bin/bash -e
 
 set -x
+echo 'DO BOOTSTRAP STEP FIRST'
 # bootstrap
 # mkdir -p /home/emily/projects/config_tracing/; cd /home/emily/projects/config_tracing/; git clone https://github.com/emilykmarx/prometheus-test-infra.git
 
+# 1. DEPS
 GO_VERSION=1.26.2
 KIND_VERSION=v0.33.0
 KUBECTL_VERSION=v1.31.13
@@ -48,31 +50,37 @@ sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
 rm /tmp/kubectl
 kubectl version --client
 
+
 # Playwright with headless Chromium, used by dump_ancestors/argmatch/experiment
 # (view_dashboards.py) to load Grafana dashboards like a person viewing them
 sudo apt-get install -y python3-pip
 pip3 install --user playwright
 python3 -m playwright install --with-deps chromium
 
-# repos
-pushd prometheus-test-infra; git checkout argmatch-prom; popd
+# 2. REPOS
+# build_images will require more clones for images besides Prometheus -
+# using built-in images for now except for prom-meta
+# docker save prometheus-builder:conftamer prometheus-conftamer:v3.2.1 -o images/conftamer-images.tar
+git checkout argmatch-prom # should already be in prometheus-test-infra/prombench
+cd ../..
 git clone https://github.com/emilykmarx/prometheus.git
 pushd prometheus; git checkout prombench; popd
 git clone https://github.com/emilykmarx/argmatch.git dump_ancestors
 git clone https://github.com/emilykmarx/golang.org-x-tools.git
 git clone https://github.com/emilykmarx/go-conftamer-ancestry.git
+git clone https://github.com/emilykmarx/conftamer
+pushd conftamer; git checkout argmatch; popd
+
+# kind: kube-proxy and promtail need more inotify instances than the default 128 (deploy.sh also sets it, but
+# only until the next reboot)
+echo "fs.inotify.max_user_instances = 512" | sudo tee /etc/sysctl.d/99-prombench-inotify.conf
+sudo sysctl --system
+
+# Mounted into prometheus-meta (manifests/cluster_kind.yaml); must exist before the cluster is created
+mkdir -p dump_ancestors/argmatch-out
 
 # Build the infra CLI used by deploy.sh
 cd prometheus-test-infra/infra
 go build -o infra .
 
-echo 'Log out and back in for docker group membership to take effect'
-
-### MANUAL STUFF ###
-# 1. Copy over any files needed for argmatch
-# gcloud compute scp --zone "us-central1-a" /home/emily/projects/config_tracing/prom-test-infra/prombench/logs_alerts/fuzzed/pods/default_prometheus-meta-cf9b59db8-bzpcm_a5016e92-df63-46f6-a6ab-54dd81578ac6/prometheus/0.log emily@paramtrack:~/projects/config_tracing/prometheus/argmatch-stacklog.txt
-# gcloud compute scp --zone "us-central1-a" /home/emily/projects/config_tracing/prom-test-infra/prombench/param_values.txt  emily@paramtrack:~/projects/config_tracing/prometheus/argmatch-matches.txt
-
-# 2. Build Prometheus image
-# build_images will require more clones for images besides Prometheus -
-# using built-in images for now except for prom-meta
+echo 'Log out and back in for docker group membership to take effect, and to source ~/.profile'

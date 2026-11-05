@@ -5,3 +5,6 @@
 /tools/scaler/scaler
 /infra/infra
 *-flags.txt
+
+# The images build_prom_argmatch.sh / build_images.sh save for deploy.sh to load
+prombench/images/
